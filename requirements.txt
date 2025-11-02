@@ -1,0 +1,10 @@
+click
+opencv-python
+numpy
+Pillow
+iopaint
+torch
+tqdm
+loguru
+transformers
+streamlit
