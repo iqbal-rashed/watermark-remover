@@ -1,13 +1,26 @@
 import sys
 from functools import lru_cache
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Any, TYPE_CHECKING
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw
-from iopaint.model_manager import ModelManager
-from iopaint.schema import HDStrategy, LDMSampler, InpaintRequest as Config
 import torch
 from loguru import logger
+
+# Optional iopaint/LaMa imports. Keep type hints without importing at runtime.
+if TYPE_CHECKING:  # only for static type checkers
+    from iopaint.model_manager import ModelManager as _ModelManager
+    ModelManager = _ModelManager  # type: ignore
+else:
+    ModelManager = Any  # type: ignore
+
+try:
+    from iopaint.model_manager import ModelManager as RuntimeModelManager  # type: ignore
+    from iopaint.schema import HDStrategy, LDMSampler, InpaintRequest as Config  # type: ignore
+    HAS_IOPAINT = True
+except Exception:
+    RuntimeModelManager = None  # type: ignore
+    HAS_IOPAINT = False
 
 logger.remove()
 logger.add(
@@ -70,7 +83,9 @@ def get_watermark_mask(image: Image.Image, mask_box: MaskBox) -> Image.Image:
     draw.rectangle([x1, y1, x2, y2], fill=255)
     return mask
 
-def process_image_with_lama(image: np.ndarray, mask: np.ndarray, model_manager: ModelManager) -> np.ndarray:
+def process_image_with_lama(image: np.ndarray, mask: np.ndarray, model_manager: Any) -> np.ndarray:
+    if not HAS_IOPAINT:
+        raise RuntimeError("LaMa/iopaint is not available; cannot run LaMa inpainting.")
     config = Config(
         ldm_steps=50,
         ldm_sampler=LDMSampler.ddim,
@@ -87,10 +102,29 @@ def process_image_with_lama(image: np.ndarray, mask: np.ndarray, model_manager: 
     return result
 
 @lru_cache(maxsize=1)
-def _load_lama_manager(selected_device: Optional[str]) -> ModelManager:
-
+def _load_lama_manager(selected_device: Optional[str]) -> Any:
+    if not HAS_IOPAINT:
+        raise RuntimeError("LaMa/iopaint not installed. Install 'iopaint' or use transparent/OpenCV mode.")
     logger.info("Loading LaMa inpainting model... this happens only once per session.")
-    return ModelManager(name="lama", device=selected_device)
+    return RuntimeModelManager(name="lama", device=selected_device)  # type: ignore
+
+
+def process_image_with_opencv_inpaint(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Fallback inpainting using OpenCV's Telea algorithm (RGB in/out)."""
+    if image.dtype != np.uint8:
+        image = np.clip(image, 0, 255).astype(np.uint8)
+    # Convert to BGR for OpenCV
+    if image.ndim == 2:
+        image_bgr = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    else:
+        image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    if mask.ndim == 3:
+        mask_gray = cv2.cvtColor(mask, cv2.COLOR_RGB2GRAY)
+    else:
+        mask_gray = mask
+    mask_bin = (mask_gray > 0).astype(np.uint8) * 255
+    inpainted_bgr = cv2.inpaint(image_bgr, mask_bin, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
+    return cv2.cvtColor(inpainted_bgr, cv2.COLOR_BGR2RGB)
 
 
 def make_region_transparent(image: Image.Image, mask: Image.Image):
@@ -110,7 +144,7 @@ def remove_watermark(
     transparent: bool = False,
     force_format: Optional[str] = None,
     mask_box: Optional[Union[MaskBox, str]] = None,
-    model_manager: Optional[ModelManager] = None,
+    model_manager: Optional[Any] = None,
     device: Optional[str] = None,
 ) -> Tuple[Image.Image, str]:
     if mask_box is None:
@@ -123,11 +157,13 @@ def remove_watermark(
     if image.mode != "RGB":
         image = image.convert("RGB")
 
-    model_manager_local: Optional[ModelManager]
+    model_manager_local: Optional[Any]
     if transparent:
         model_manager_local = None
     else:
-        model_manager_local = model_manager or _load_lama_manager(selected_device)
+        model_manager_local = None
+        if HAS_IOPAINT:
+            model_manager_local = model_manager or _load_lama_manager(selected_device)
 
     resolved_mask_box = ensure_mask_box(mask_box)
     mask_image = get_watermark_mask(image, resolved_mask_box)
@@ -135,10 +171,15 @@ def remove_watermark(
     if transparent:
         result_image = make_region_transparent(image, mask_image)
     else:
-        if model_manager_local is None:
-            raise RuntimeError("Model manager required when running inpainting mode.")
-        lama_result = process_image_with_lama(np.asarray(image), np.asarray(mask_image), model_manager_local)
-        result_image = Image.fromarray(cv2.cvtColor(lama_result, cv2.COLOR_BGR2RGB))
+        # Inpainting path: prefer LaMa if available, otherwise OpenCV fallback
+        img_np = np.array(image, copy=True)
+        mask_np = np.array(mask_image, copy=True)
+        if model_manager_local is not None:
+            lama_bgr = process_image_with_lama(img_np, mask_np, model_manager_local)
+            result_image = Image.fromarray(cv2.cvtColor(lama_bgr, cv2.COLOR_BGR2RGB))
+        else:
+            inpaint_rgb = process_image_with_opencv_inpaint(img_np, mask_np)
+            result_image = Image.fromarray(inpaint_rgb)
         
     logger.success("Watermark removed successfully")
 

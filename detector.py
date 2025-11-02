@@ -37,6 +37,7 @@ logger.add(
 def _load_default_model(selected_device: str) -> Tuple[AutoModelForCausalLM, AutoProcessor]:
     logger.info(f"Loading default detection model '{DEFAULT_MODEL_ID}' (cached)")
     model = AutoModelForCausalLM.from_pretrained(DEFAULT_MODEL_ID, trust_remote_code=True).to(selected_device).eval()
+
     processor = AutoProcessor.from_pretrained(DEFAULT_MODEL_ID, trust_remote_code=True)
     return model, processor
 

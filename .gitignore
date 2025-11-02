@@ -1,4 +1,8 @@
 __pycache__
 venv
-example
-!example/test.png
+
+example/*
+
+!example/test.jpg
+
+uploads
