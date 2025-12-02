@@ -109,3 +109,4 @@ win32_setctime==1.2.0
 wsproto==1.2.0
 yacs==0.1.8
 zipp==3.23.0
+static_ffmpeg==2.13

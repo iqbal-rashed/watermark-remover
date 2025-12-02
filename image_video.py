@@ -3,16 +3,16 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Optional, Union
-
+import static_ffmpeg
 import cv2
 import numpy as np
 from sympy import Float
 import torch
 from PIL import Image
 from loguru import logger
-
 from remover import MaskBox, remove_watermark, ensure_mask_box
 
+static_ffmpeg.add_paths()
 
 IMAGE_EXTENSIONS = {
     ".png",
@@ -157,7 +157,7 @@ def _process_single_image(
     final_path = _resolve_image_output_path(input_file, output_path, output_format)
     result_image.save(final_path, format=output_format)
     logger.success("Processed image '{}' -> '{}'", input_file, final_path)
-    return final_path
+    return final_path, resolved_mask_box
 
 
 def _resolve_image_output_path(input_file: Path, output_path: Path, output_format: str) -> Path:

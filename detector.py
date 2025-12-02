@@ -131,6 +131,10 @@ def _detect_bounding_boxes(
         coverage = (bbox_area / image_area) * 100 if image_area else 0
         if coverage <= max_bbox_percent:
             mask_boxes.append((x1, y1, x2, y2))
+            logger.success(
+                "Bounding box x1:{} y1:{} x2:{} y2:{}",
+                x1,y1,x2,y2
+            )
         else:
             logger.debug(
                 "Skipping bounding box {} covering {:.2f}% of the image (limit {:.2f}%)",
