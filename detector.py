@@ -112,7 +112,7 @@ def _detect_bounding_boxes(
     max_bbox_percent: float,
     device: str,
 ) -> List[MaskBox]:
-    text_input = "watermark Sora logo"
+    text_input = "veo text"
     parsed_answer = identify(TaskType.OPEN_VOCAB_DETECTION, image, text_input, model, processor, device=device)
 
     mask_boxes: List[MaskBox] = []
@@ -121,7 +121,7 @@ def _detect_bounding_boxes(
     detections = parsed_answer.get(detection_key, {})
     bboxes = detections.get("bboxes", [])
     image_area = image.width * image.height
-
+    
     for bbox in bboxes:
         x1, y1, x2, y2 = map(int, bbox)
         bbox_area = max(0, (x2 - x1)) * max(0, (y2 - y1))
