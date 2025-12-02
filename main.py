@@ -68,7 +68,7 @@ if run_btn:
             
         if media_type == "Image":
             try:
-                out_path = _process_single_image(
+                out_path, resolved_mask_box = _process_single_image(
                     save_path,
                     uploads_dir,
                     mask_box=mask_text,
@@ -77,6 +77,7 @@ if run_btn:
                     max_bbox_percent=max_bbox_percent
                 )
                 st.image(str(out_path))
+                st.code(f"Bounding box {resolved_mask_box}")
                 with open(out_path, "rb") as fp:
                     st.download_button("Download", data=fp, file_name=out_path.name,type='primary',use_container_width=True)
             except Exception as e:
@@ -100,5 +101,5 @@ if run_btn:
                     st.download_button("Download", data=fp, file_name=out_path.name,type='primary',use_container_width=True)
             except Exception as e:
                 st.error(f"Processing failed: {e}")
-                st.stop()
+                
 
