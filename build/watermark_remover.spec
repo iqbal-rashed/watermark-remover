@@ -6,8 +6,9 @@ Build command:
   pyinstaller build/watermark_remover.spec --distpath dist --workpath build/work
 
 NOTE: Frontend must be built first:
-  cd frontend && npm install && npm run build
+  cd frontend && yarn install && yarn build
 """
+import json
 import sys
 import os
 from pathlib import Path
@@ -17,6 +18,9 @@ FRONTEND_DIST = ROOT / "frontend" / "dist"
 RESOURCES = ROOT / "resources"
 
 block_cipher = None
+
+with open(ROOT / "version.json") as _f:
+    _version = json.load(_f)["version"]
 
 # ── Collect data files ────────────────────────────────────────────────────────
 
@@ -63,7 +67,7 @@ a = Analysis(
         # webview
         "webview",
         "webview.platforms",
-        # pip (for runtime installs during onboarding)
+        # pip (needed by setup_manager to install packages at runtime in frozen app)
         "pip",
         "pip._internal",
         "pip._internal.cli",
@@ -117,6 +121,25 @@ a = Analysis(
         "IPython",
         "jupyter",
         "notebook",
+        # Heavy runtime deps (installed via onboarding)
+        "cv2",
+        "numpy",
+        # Unused stdlib / heavy modules
+        "unittest",
+        "email",
+        "html",
+        "http.server",
+        "xml.etree",
+        "xmlrpc",
+        "ftplib",
+        "imaplib",
+        "poplib",
+        "smtplib",
+        "telnetlib",
+        "nntplib",
+        "sqlite3",
+        "dbm",
+        "cefpython3",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -128,8 +151,27 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # ── Platform-specific icon ────────────────────────────────────────────────────
 
+def _make_ico(png_path):
+    """Convert PNG to a temp ICO for PyInstaller (Windows only)."""
+    try:
+        import tempfile
+        from PIL import Image
+        img = Image.open(png_path).convert("RGBA")
+        ico = Path(tempfile.mktemp(suffix=".ico"))
+        img.save(ico, format="ICO", sizes=[(256,256),(128,128),(64,64),(32,32),(16,16)])
+        return str(ico)
+    except Exception as e:
+        print(f"WARNING: PNG→ICO failed: {e}")
+        return None
+
 if sys.platform == "win32":
-    icon_path = str(RESOURCES / "icon.ico") if (RESOURCES / "icon.ico").exists() else None
+    _ico = str(RESOURCES / "icon.ico") if (RESOURCES / "icon.ico").exists() else None
+    if not _ico:
+        _png = RESOURCES / "logo-dark.png"
+        if not _png.exists():
+            _png = ROOT / "frontend" / "public" / "logo-dark.png"
+        _ico = _make_ico(_png) if _png.exists() else None
+    icon_path = _ico
 elif sys.platform == "darwin":
     icon_path = str(RESOURCES / "icon.icns") if (RESOURCES / "icon.icns").exists() else None
 else:
@@ -170,6 +212,6 @@ if sys.platform == "darwin":
         bundle_identifier="com.watermarkremover.app",
         info_plist={
             "NSHighResolutionCapable": True,
-            "CFBundleShortVersionString": "1.0.0",
+            "CFBundleShortVersionString": _version,
         },
     )

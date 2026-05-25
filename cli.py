@@ -1,4 +1,5 @@
 """Interactive Rich CLI for Watermark Remover."""
+import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -13,9 +14,12 @@ from rich import box as rbox
 
 console = Console()
 
-BANNER = """
+_version_file = Path(__file__).parent / "version.json"
+_VERSION = json.loads(_version_file.read_text()).get("version", "unknown") if _version_file.exists() else "unknown"
+
+BANNER = f"""
 [bold cyan]╔══════════════════════════════════════╗[/bold cyan]
-[bold cyan]║[/bold cyan]   [bold white]Watermark Remover[/bold white]  [dim]CLI v1.0.0[/dim]   [bold cyan]║[/bold cyan]
+[bold cyan]║[/bold cyan]   [bold white]Watermark Remover[/bold white]  [dim]CLI v{_VERSION}[/dim]   [bold cyan]║[/bold cyan]
 [bold cyan]╚══════════════════════════════════════╝[/bold cyan]
 """
 

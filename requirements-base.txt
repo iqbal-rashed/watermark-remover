@@ -1,10 +1,8 @@
 # Minimal requirements for the small-exe build (no ML/torch).
 # ML packages (torch, transformers, etc.) are downloaded at runtime via onboarding.
 
-# ── Core image/video (CPU-only, no CUDA) ─────────────────────────────────────
-opencv-python-headless==4.11.0.86
+# ── Core image (no CV/numpy — installed at runtime via onboarding) ───────────
 Pillow>=12.2.0
-numpy==1.26.4
 
 # ── Video ─────────────────────────────────────────────────────────────────────
 static_ffmpeg==2.13

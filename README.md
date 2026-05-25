@@ -33,25 +33,21 @@
   </a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/iqbal-rashed/watermark-remover/releases">All releases →</a>
-</p>
-
 ---
 
 ## Features
 
-| | |
-|---|---|
-| **AI Auto-Detection** | Florence-2 (Microsoft) finds the watermark region automatically |
-| **High-Quality Inpainting** | LaMa deep learning model fills the removed area naturally |
-| **Desktop App** | Native window with a modern React UI — no browser needed |
-| **Browser UI** | Run the server and open in any browser |
-| **CLI** | Beautiful terminal interface with Rich progress bars |
-| **GPU Acceleration** | CUDA support for faster processing on NVIDIA GPUs |
-| **Video Support** | Removes watermarks from MP4, AVI frame by frame |
-| **Formats** | PNG, WEBP, JPG, MP4, AVI |
-| **Auto-Update** | Checks GitHub releases and notifies you of new versions |
+|                             |                                                                 |
+| --------------------------- | --------------------------------------------------------------- |
+| **AI Auto-Detection**       | Florence-2 (Microsoft) finds the watermark region automatically |
+| **High-Quality Inpainting** | LaMa deep learning model fills the removed area naturally       |
+| **Desktop App**             | Native window with a modern React UI — no browser needed        |
+| **Browser UI**              | Run the server and open in any browser                          |
+| **CLI**                     | Beautiful terminal interface with Rich progress bars            |
+| **GPU Acceleration**        | CUDA support for faster processing on NVIDIA GPUs               |
+| **Video Support**           | Removes watermarks from MP4, AVI frame by frame                 |
+| **Formats**                 | PNG, WEBP, JPG, MP4, AVI                                        |
+| **Auto-Update**             | Checks GitHub releases and notifies you of new versions         |
 
 ---
 

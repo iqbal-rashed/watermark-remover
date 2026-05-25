@@ -75,6 +75,15 @@ def detect_gpu() -> bool:
     return False
 
 
+def is_cv2_installed() -> bool:
+    _add_packages_to_path()
+    try:
+        import cv2  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def is_torch_installed() -> bool:
     _add_packages_to_path()
     try:
@@ -110,6 +119,7 @@ def get_setup_status() -> dict:
     return {
         "complete": is_setup_complete(),
         "gpu_available": gpu,
+        "cv2_installed": is_cv2_installed(),
         "torch_installed": is_torch_installed(),
         "transformers_installed": is_transformers_installed(),
         "florence_downloaded": is_florence_downloaded(),
@@ -150,7 +160,18 @@ def run_setup(gpu: bool = False) -> Generator[dict, None, None]:
     """Generator that yields progress events during setup."""
     yield {"step": "start", "status": "Starting setup...", "progress": 0}
 
-    # Step 1: Install torch
+    # Step 1: Install opencv + numpy
+    if not is_cv2_installed():
+        yield {"step": "cv2", "status": "Installing OpenCV + NumPy...", "progress": 0}
+        success = _pip_install(["opencv-python-headless", "numpy"])
+        if not success:
+            yield {"step": "cv2", "status": "OpenCV installation failed", "progress": 0, "error": True}
+            return
+        yield {"step": "cv2", "status": "OpenCV installed", "progress": 100, "done_step": True}
+    else:
+        yield {"step": "cv2", "status": "OpenCV already installed", "progress": 100, "done_step": True, "skipped": True}
+
+    # Step 2: Install torch
     if not is_torch_installed():
         yield {"step": "torch", "status": "Installing PyTorch...", "progress": 0}
         torch_pkg = ["torch", "torchvision"]
@@ -169,7 +190,7 @@ def run_setup(gpu: bool = False) -> Generator[dict, None, None]:
     else:
         yield {"step": "torch", "status": "PyTorch already installed", "progress": 100, "done_step": True, "skipped": True}
 
-    # Step 2: Install transformers + accelerate
+    # Step 3: Install transformers + accelerate
     if not is_transformers_installed():
         yield {"step": "transformers", "status": "Installing transformers...", "progress": 0}
         success = _pip_install(["transformers", "accelerate", "huggingface-hub", "timm", "einops", "flash-attn"], None)
