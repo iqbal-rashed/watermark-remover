@@ -32,6 +32,7 @@ interface StepState {
 }
 
 const STEPS: Record<string, string> = {
+  cv2: "OpenCV + NumPy",
   torch: "PyTorch",
   transformers: "Transformers + HuggingFace",
   florence2: "Florence-2 Model (~3 GB)",
@@ -85,7 +86,7 @@ export function Onboarding() {
     setStage("installing");
     const gpu = setupStatus?.gpu_available ?? false;
 
-    const stepOrder = ["torch", "transformers", "florence2"];
+    const stepOrder = ["cv2", "torch", "transformers", "florence2"];
     let totalPct = 0;
 
     const cleanup = streamSetup(gpu, (event: SetupEvent) => {
@@ -220,6 +221,7 @@ export function Onboarding() {
               <div className="space-y-2">
                 {Object.entries(STEPS).map(([key, label]) => {
                   const installed =
+                    (key === "cv2" && setupStatus?.cv2_installed) ||
                     (key === "torch" && setupStatus?.torch_installed) ||
                     (key === "transformers" &&
                       setupStatus?.transformers_installed) ||

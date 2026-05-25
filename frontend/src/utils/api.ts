@@ -7,6 +7,7 @@ const BASE = "";  // same origin
 export interface SetupStatus {
   complete: boolean;
   gpu_available: boolean;
+  cv2_installed: boolean;
   torch_installed: boolean;
   transformers_installed: boolean;
   florence_downloaded: boolean;

@@ -67,6 +67,10 @@ a = Analysis(
         # webview
         "webview",
         "webview.platforms",
+        # system tray
+        "pystray",
+        "pystray._win32",
+        "pystray._base",
         # pip (needed by setup_manager to install packages at runtime in frozen app)
         "pip",
         "pip._internal",

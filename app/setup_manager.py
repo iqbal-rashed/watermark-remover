@@ -48,7 +48,21 @@ def is_setup_complete() -> bool:
 def _add_packages_to_path():
     pkg_path = str(PACKAGES_DIR)
     if pkg_path not in sys.path:
-        sys.path.insert(0, pkg_path)
+        sys.path.append(pkg_path)
+    # On Windows, numpy's C extensions (_linalg, etc.) need their DLLs discoverable.
+    # Without this, loading numpy from a non-standard directory fails with a circular
+    # import error because the native .pyd files can't locate their sibling DLLs.
+    if sys.platform == "win32":
+        try:
+            os.add_dll_directory(pkg_path)
+            numpy_libs = PACKAGES_DIR / "numpy" / ".dylibs"
+            if numpy_libs.exists():
+                os.add_dll_directory(str(numpy_libs))
+            numpy_core = PACKAGES_DIR / "numpy" / "core"
+            if numpy_core.exists():
+                os.add_dll_directory(str(numpy_core))
+        except (AttributeError, OSError):
+            pass
 
 
 def detect_gpu() -> bool:
@@ -126,22 +140,57 @@ def get_setup_status() -> dict:
     }
 
 
-def _pip_install(packages: list, index_url: Optional[str] = None) -> bool:
-    """Install packages to PACKAGES_DIR using pip."""
+def _find_system_python() -> Optional[str]:
+    """Find a usable Python interpreter (not the frozen exe)."""
+    import shutil
+    frozen_exe = os.path.abspath(sys.executable)
+    for name in ["python3", "python", "python3.exe", "python.exe"]:
+        found = shutil.which(name)
+        if found and os.path.abspath(found) != frozen_exe:
+            return found
+    return None
+
+
+def _pip_install(packages: list, index_url: Optional[str] = None) -> tuple:
+    """Install packages to PACKAGES_DIR. Returns (success: bool, error: str)."""
     PACKAGES_DIR.mkdir(parents=True, exist_ok=True)
-    args = ["install", "--target", str(PACKAGES_DIR), "--quiet", "--upgrade"]
+    # No --upgrade: we check is_*_installed() before calling, so we never need to
+    # overwrite existing files. On Windows, --upgrade tries to delete locked .pyd
+    # files (loaded by the running process), causing PermissionError WinError 5.
+    args = ["install", "--target", str(PACKAGES_DIR)]
     if index_url:
         args += ["--index-url", index_url]
     args += packages
 
     if getattr(sys, "frozen", False):
-        # Frozen PyInstaller app: use bundled pip
+        # Frozen PyInstaller exe: sys.executable is the .exe, not python.exe.
+        # Find system Python via PATH so we can call pip normally via subprocess.
+        python_exe = _find_system_python()
+        if python_exe:
+            try:
+                result = subprocess.run(
+                    [python_exe, "-m", "pip"] + args,
+                    capture_output=True, text=True
+                )
+                if result.returncode != 0:
+                    err = (result.stderr or result.stdout or "unknown pip error")[-800:]
+                    logger.error(f"pip install error: {err}")
+                    return False, err
+                return True, ""
+            except Exception as e:
+                logger.error(f"pip install failed (system python): {e}")
+                # fall through to bundled pip
+
+        # Fallback: use pip bundled inside the PyInstaller archive
         try:
             from pip._internal.cli.main import main as pip_main  # type: ignore
-            return pip_main(args) == 0
+            ret = pip_main(args)
+            if ret != 0:
+                return False, "pip exited with a non-zero code (check pip logs)"
+            return True, ""
         except Exception as e:
-            logger.error(f"pip install failed (frozen): {e}")
-            return False
+            logger.error(f"pip install failed (frozen fallback): {e}")
+            return False, str(e)
     else:
         try:
             result = subprocess.run(
@@ -149,11 +198,13 @@ def _pip_install(packages: list, index_url: Optional[str] = None) -> bool:
                 capture_output=True, text=True
             )
             if result.returncode != 0:
-                logger.error(f"pip install error: {result.stderr}")
-            return result.returncode == 0
+                err = (result.stderr or result.stdout or "unknown pip error")[-800:]
+                logger.error(f"pip install error: {err}")
+                return False, err
+            return True, ""
         except Exception as e:
             logger.error(f"pip install failed: {e}")
-            return False
+            return False, str(e)
 
 
 def run_setup(gpu: bool = False) -> Generator[dict, None, None]:
@@ -163,9 +214,10 @@ def run_setup(gpu: bool = False) -> Generator[dict, None, None]:
     # Step 1: Install opencv + numpy
     if not is_cv2_installed():
         yield {"step": "cv2", "status": "Installing OpenCV + NumPy...", "progress": 0}
-        success = _pip_install(["opencv-python-headless", "numpy"])
+        success, err = _pip_install(["opencv-python-headless", "numpy"])
         if not success:
-            yield {"step": "cv2", "status": "OpenCV installation failed", "progress": 0, "error": True}
+            msg = f"OpenCV installation failed: {err}" if err else "OpenCV installation failed"
+            yield {"step": "cv2", "status": msg, "progress": 0, "error": True}
             return
         yield {"step": "cv2", "status": "OpenCV installed", "progress": 100, "done_step": True}
     else:
@@ -175,16 +227,32 @@ def run_setup(gpu: bool = False) -> Generator[dict, None, None]:
     if not is_torch_installed():
         yield {"step": "torch", "status": "Installing PyTorch...", "progress": 0}
         torch_pkg = ["torch", "torchvision"]
-        if gpu:
-            index_url = "https://download.pytorch.org/whl/cu121"
-            yield {"step": "torch", "status": "Downloading PyTorch (CUDA)... this may take a few minutes", "progress": 10}
-        else:
-            index_url = "https://download.pytorch.org/whl/cpu"
-            yield {"step": "torch", "status": "Downloading PyTorch (CPU)... this may take a few minutes", "progress": 10}
 
-        success = _pip_install(torch_pkg, index_url=index_url)
+        # Try CUDA indexes newest-first (cu126 → cu124 → cu121), then CPU fallback.
+        # Newer indexes support Python 3.12/3.13; older indexes may lack wheels entirely.
+        if gpu:
+            index_candidates = [
+                ("https://download.pytorch.org/whl/cu132", "CUDA 13.2"),
+                ("https://download.pytorch.org/whl/cu130", "CUDA 13.0"),
+                ("https://download.pytorch.org/whl/cu126", "CUDA 12.6"),
+                ("https://download.pytorch.org/whl/cpu", "CPU (CUDA unavailable for this Python)"),
+            ]
+        else:
+            index_candidates = [
+                ("https://download.pytorch.org/whl/cpu", "CPU"),
+            ]
+
+        success, err = False, ""
+        for index_url, label in index_candidates:
+            yield {"step": "torch", "status": f"Downloading PyTorch ({label})... this may take a few minutes", "progress": 10}
+            success, err = _pip_install(torch_pkg, index_url=index_url)
+            if success:
+                break
+            logger.warning(f"PyTorch install failed with {label}: {err[:200]}")
+
         if not success:
-            yield {"step": "torch", "status": "PyTorch installation failed", "progress": 0, "error": True}
+            msg = f"PyTorch installation failed: {err}" if err else "PyTorch installation failed"
+            yield {"step": "torch", "status": msg, "progress": 0, "error": True}
             return
         yield {"step": "torch", "status": "PyTorch installed", "progress": 100, "done_step": True}
     else:
@@ -193,12 +261,13 @@ def run_setup(gpu: bool = False) -> Generator[dict, None, None]:
     # Step 3: Install transformers + accelerate
     if not is_transformers_installed():
         yield {"step": "transformers", "status": "Installing transformers...", "progress": 0}
-        success = _pip_install(["transformers", "accelerate", "huggingface-hub", "timm", "einops", "flash-attn"], None)
+        success, err = _pip_install(["transformers", "accelerate", "huggingface-hub", "hf_xet", "timm", "einops", "flash-attn"], None)
         if not success:
-            # Try without flash-attn (compilation issue on some platforms)
-            success = _pip_install(["transformers", "accelerate", "huggingface-hub", "timm", "einops"], None)
+            # Try without flash-attn and hf_xet (compilation issues on some platforms)
+            success, err = _pip_install(["transformers", "accelerate", "huggingface-hub", "timm", "einops"], None)
         if not success:
-            yield {"step": "transformers", "status": "transformers installation failed", "progress": 0, "error": True}
+            msg = f"transformers installation failed: {err}" if err else "transformers installation failed"
+            yield {"step": "transformers", "status": msg, "progress": 0, "error": True}
             return
         yield {"step": "transformers", "status": "transformers installed", "progress": 100, "done_step": True}
     else:
@@ -210,14 +279,19 @@ def run_setup(gpu: bool = False) -> Generator[dict, None, None]:
         _add_packages_to_path()
         try:
             from huggingface_hub import snapshot_download
-            from huggingface_hub import constants as hf_constants
 
-            # Download with progress tracking via tqdm callback
             yield {"step": "florence2", "status": "Connecting to HuggingFace...", "progress": 5}
-            snapshot_download(
-                FLORENCE_MODEL_ID,
-                ignore_patterns=["*.msgpack", "*.h5", "flax_model*", "tf_model*"],
-            )
+            _IGNORE = ["*.msgpack", "*.h5", "flax_model*", "tf_model*"]
+            try:
+                snapshot_download(FLORENCE_MODEL_ID, ignore_patterns=_IGNORE)
+            except Exception as xet_err:
+                if "hf_xet" in str(xet_err) or "Xet" in str(xet_err):
+                    # hf_xet not available — disable Xet storage and retry with plain HTTP
+                    import os as _os
+                    _os.environ["HF_HUB_DISABLE_XET"] = "1"
+                    snapshot_download(FLORENCE_MODEL_ID, ignore_patterns=_IGNORE)
+                else:
+                    raise
             yield {"step": "florence2", "status": "Florence-2 model downloaded", "progress": 100, "done_step": True}
         except Exception as e:
             yield {"step": "florence2", "status": f"Download failed: {e}", "progress": 0, "error": True}
