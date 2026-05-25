@@ -8,7 +8,7 @@ ROOT = Path(__file__).parent.parent
 
 def run(cmd: list, cwd=None):
     print(f"\n$ {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=cwd or ROOT)
+    result = subprocess.run(cmd, cwd=cwd or ROOT, shell=sys.platform == "win32")
     if result.returncode != 0:
         print(f"Command failed with exit code {result.returncode}")
         sys.exit(result.returncode)
