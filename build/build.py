@@ -37,9 +37,9 @@ def main():
     if exes:
         for exe in exes:
             size_mb = exe.stat().st_size / 1048576
-            print(f"\n✓ Output: {exe}  ({size_mb:.1f} MB)")
+            print(f"\nOutput: {exe}  ({size_mb:.1f} MB)")
     else:
-        print("\n✓ Build complete. Check dist/")
+        print("\nBuild complete. Check dist/")
 
 
 if __name__ == "__main__":
