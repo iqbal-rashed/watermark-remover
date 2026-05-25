@@ -78,7 +78,7 @@ cd watermark-remover
 pip install -r requirements.txt
 
 # Build and run the desktop app
-cd frontend && npm install && npm run build && cd ..
+cd frontend && yarn install && yarn build && cd ..
 python desktop.py
 ```
 
@@ -89,7 +89,7 @@ python desktop.py
 python -m app.server --reload
 
 # Terminal 2 — frontend
-cd frontend && npm run dev
+cd frontend && yarn dev
 ```
 
 Then open `http://localhost:5173` in your browser.
