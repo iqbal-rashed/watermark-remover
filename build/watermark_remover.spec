@@ -93,7 +93,7 @@ a = Analysis(
     ],
     hookspath=[str(ROOT / "build" / "hooks")],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[str(ROOT / "build" / "hooks" / "rthook_no_console.py")],
     excludes=[
         # Exclude heavy ML packages (downloaded at runtime via onboarding)
         "torch",
@@ -126,10 +126,6 @@ a = Analysis(
         "numpy",
         # Unused stdlib / heavy modules
         "unittest",
-        "email",
-        "html",
-        "http.server",
-        "xml.etree",
         "xmlrpc",
         "ftplib",
         "imaplib",
@@ -137,7 +133,6 @@ a = Analysis(
         "smtplib",
         "telnetlib",
         "nntplib",
-        "sqlite3",
         "dbm",
         "cefpython3",
     ],

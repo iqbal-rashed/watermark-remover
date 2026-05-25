@@ -1,4 +1,5 @@
 """Desktop app entry point using pywebview + FastAPI backend."""
+import multiprocessing
 import socket
 import sys
 import threading
@@ -175,4 +176,5 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

@@ -185,7 +185,6 @@ jobs:
           tag_name: ${{ github.ref_name || steps.version.outputs.version }}
           name: "Watermark Remover ${{ steps.version.outputs.version }}"
           body: |
-            ## Watermark Remover ${{ steps.version.outputs.version }}
 
             ### Downloads
             | Platform | File |
