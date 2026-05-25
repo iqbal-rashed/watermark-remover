@@ -18,8 +18,8 @@ def main():
     # 1. Build frontend
     frontend = ROOT / "frontend"
     print("=== Building frontend ===")
-    run(["npm", "install"], cwd=frontend)
-    run(["npm", "run", "build"], cwd=frontend)
+    run(["yarn", "install", "--frozen-lockfile"], cwd=frontend)
+    run(["yarn", "build"], cwd=frontend)
 
     # 2. Package with PyInstaller
     print("\n=== Packaging with PyInstaller ===")
