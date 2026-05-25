@@ -1,0 +1,208 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Build Windows exe ──────────────────────────────────────────────────────
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install base Python deps
+        run: pip install -r requirements-base.txt pyinstaller
+
+      - name: Install pywebview Windows deps
+        run: pip install pywebview[cef]
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build exe with PyInstaller
+        run: python build/build.py
+
+      - name: Rename artifact
+        run: |
+          $src = Get-ChildItem dist/watermark-remover* | Select-Object -First 1
+          Rename-Item $src.FullName "watermark-remover-windows.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/watermark-remover-windows.exe
+
+  # ── Build macOS app ────────────────────────────────────────────────────────
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install base Python deps
+        run: pip install -r requirements-base.txt pyinstaller
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build app
+        run: python build/build.py
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "Watermark Remover" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 450 185 \
+            dist/watermark-remover-macos.dmg \
+            "dist/Watermark Remover.app"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/watermark-remover-macos.dmg
+
+  # ── Build Linux AppImage ───────────────────────────────────────────────────
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libwebkit2gtk-4.0-dev \
+            libglib2.0-dev libpango1.0-dev \
+            gir1.2-webkit2-4.0
+
+      - name: Install base Python deps
+        run: pip install -r requirements-base.txt pyinstaller
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build binary
+        run: python build/build.py
+
+      - name: Make executable
+        run: |
+          chmod +x dist/watermark-remover
+          mv dist/watermark-remover dist/watermark-remover-linux
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bin
+          path: dist/watermark-remover-linux
+
+  # ── Create GitHub Release ─────────────────────────────────────────────────
+  release:
+    name: Create Release
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from version.json
+        id: version
+        run: |
+          VERSION=$(python -c "import json; print(json.load(open('version.json'))['version'])")
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || steps.version.outputs.version }}
+          name: "Watermark Remover ${{ steps.version.outputs.version }}"
+          body: |
+            ## Watermark Remover ${{ steps.version.outputs.version }}
+
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | Windows  | `watermark-remover-windows.exe` |
+            | macOS    | `watermark-remover-macos.dmg` |
+            | Linux    | `watermark-remover-linux` |
+
+            ### First Run
+            On first launch, the app will guide you through downloading:
+            - PyTorch (CPU or GPU depending on your hardware)
+            - Florence-2 AI model for watermark detection (~3 GB)
+
+            ### What's New
+            See [CHANGELOG.md](CHANGELOG.md) for details.
+
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/windows-exe/watermark-remover-windows.exe
+            artifacts/macos-dmg/watermark-remover-macos.dmg
+            artifacts/linux-bin/watermark-remover-linux
+          token: ${{ secrets.GITHUB_TOKEN }}

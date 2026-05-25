@@ -1,8 +1,42 @@
-__pycache__
-venv
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/work/
+venv/
+.venv/
+*.egg
 
+# Node
+node_modules/
+frontend/dist/
+frontend/.cache/
+
+# Build outputs
+dist/
+build/work/
+
+# App data / logs
+.watermark-remover/
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Example (keep test.jpg)
 example/*
-
 !example/test.jpg
 
-uploads
+# Legacy
+uploads/
