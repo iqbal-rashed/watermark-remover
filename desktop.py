@@ -99,13 +99,9 @@ def _wait_for_server(port: int, timeout: float = 30.0):
 
 
 def _start_server(port: int):
-    from app.server import create_app
-    try:
-        from app.setup_manager import _add_packages_to_path
-        _add_packages_to_path()
-    except Exception:
-        pass
-    uvicorn_app = create_app()
+    from app.setup_manager import _add_packages_to_path
+    _add_packages_to_path()
+    from app.server import app as uvicorn_app
     config = uvicorn.Config(uvicorn_app, host=HOST, port=port, log_level="warning", access_log=False)
     uvicorn.Server(config).run()
 

@@ -49,18 +49,39 @@ def _add_packages_to_path():
     pkg_path = str(PACKAGES_DIR)
     if pkg_path not in sys.path:
         sys.path.append(pkg_path)
-    # On Windows, numpy's C extensions (_linalg, etc.) need their DLLs discoverable.
-    # Without this, loading numpy from a non-standard directory fails with a circular
-    # import error because the native .pyd files can't locate their sibling DLLs.
-    if sys.platform == "win32":
+
+    if sys.platform != "win32":
+        return
+
+    # Build the list of directories that contain native DLLs.
+    dll_dirs = [PACKAGES_DIR]
+
+    # numpy 2.x ships DLLs in numpy.libs/ at the packages root;
+    # numpy 1.x ships them inside numpy/core/.
+    for candidate in [PACKAGES_DIR / "numpy.libs", PACKAGES_DIR / "numpy" / "core"]:
+        if candidate.exists():
+            dll_dirs.append(candidate)
+
+    # cv2's config.py hardcodes a cmake build path (../../x64/vc17/bin) that
+    # never exists in a pip wheel installation, so cv2's own bootstrap fails to
+    # register its DLL directory. We must add cv2/ to PATH *before* cv2 is
+    # imported so Windows can find opencv_videoio_ffmpeg*.dll and any other
+    # bundled DLLs regardless of what cv2's bootstrap does.
+    cv2_dir = PACKAGES_DIR / "cv2"
+    if cv2_dir.exists():
+        dll_dirs.append(cv2_dir)
+
+    # Prepend all DLL directories to PATH — the most reliable mechanism on
+    # Windows because it works even before os.add_dll_directory is called and
+    # covers DLLs loaded transitively by .pyd files.
+    path_entries = [str(d) for d in dll_dirs]
+    existing_path = os.environ.get("PATH", "")
+    os.environ["PATH"] = ";".join(path_entries) + (";" if existing_path else "") + existing_path
+
+    # Also register with os.add_dll_directory (Python 3.8+ safe DLL search).
+    for d in dll_dirs:
         try:
-            os.add_dll_directory(pkg_path)
-            numpy_libs = PACKAGES_DIR / "numpy" / ".dylibs"
-            if numpy_libs.exists():
-                os.add_dll_directory(str(numpy_libs))
-            numpy_core = PACKAGES_DIR / "numpy" / "core"
-            if numpy_core.exists():
-                os.add_dll_directory(str(numpy_core))
+            os.add_dll_directory(str(d))
         except (AttributeError, OSError):
             pass
 
@@ -90,7 +111,6 @@ def detect_gpu() -> bool:
 
 
 def is_cv2_installed() -> bool:
-    _add_packages_to_path()
     try:
         import cv2  # noqa: F401
         return True
@@ -211,17 +231,8 @@ def run_setup(gpu: bool = False) -> Generator[dict, None, None]:
     """Generator that yields progress events during setup."""
     yield {"step": "start", "status": "Starting setup...", "progress": 0}
 
-    # Step 1: Install opencv + numpy
-    if not is_cv2_installed():
-        yield {"step": "cv2", "status": "Installing OpenCV + NumPy...", "progress": 0}
-        success, err = _pip_install(["opencv-python-headless", "numpy"])
-        if not success:
-            msg = f"OpenCV installation failed: {err}" if err else "OpenCV installation failed"
-            yield {"step": "cv2", "status": msg, "progress": 0, "error": True}
-            return
-        yield {"step": "cv2", "status": "OpenCV installed", "progress": 100, "done_step": True}
-    else:
-        yield {"step": "cv2", "status": "OpenCV already installed", "progress": 100, "done_step": True, "skipped": True}
+    # Step 1: numpy + opencv are bundled with the app — always skip
+    yield {"step": "cv2", "status": "OpenCV ready", "progress": 100, "done_step": True, "skipped": True}
 
     # Step 2: Install torch
     if not is_torch_installed():

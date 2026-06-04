@@ -16,6 +16,11 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
+# Must run before any core module import so that numpy/cv2/torch are findable
+# on all code paths — not just the guarded endpoint handlers.
+from app.setup_manager import _add_packages_to_path
+_add_packages_to_path()
+
 TEMP_DIR = Path(tempfile.gettempdir()) / "watermark-remover-server"
 TEMP_DIR.mkdir(exist_ok=True)
 
@@ -130,9 +135,6 @@ async def detect_watermark(file_id: str = Query(...), max_bbox_percent: float = 
     if not info:
         raise HTTPException(status_code=404, detail="File not found")
 
-    from app.setup_manager import _add_packages_to_path
-    _add_packages_to_path()
-
     async def generate():
         loop = asyncio.get_event_loop()
         queue: asyncio.Queue = asyncio.Queue()
@@ -197,9 +199,6 @@ async def process_file(
     info = _file_registry.get(file_id)
     if not info:
         raise HTTPException(status_code=404, detail="File not found")
-
-    from app.setup_manager import _add_packages_to_path
-    _add_packages_to_path()
 
     async def generate():
         loop = asyncio.get_event_loop()
